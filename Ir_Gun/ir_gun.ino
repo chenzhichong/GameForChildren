@@ -93,66 +93,6 @@ void setup() {
   idle_start_at = millis();
 }
 
-void shoot1() {
-    // The payload will always be the same, what will change is how much of it we send.
-    static char send_payload[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ789012";
-
-    // First, stop listening so we can talk.
-    radio.stopListening();
-
-    // Take the time, and send it.  This will block until complete
-    Serial.print(F("Now sending length "));
-    Serial.println(next_payload_size);
-    //先发送起始帧
-    radio.write(sync_start_tx, data_sync_witdh);
-    //发送帧数，每帧31字节，头2字节是序号
-    radio.write(send_payload, next_payload_size);
-    //最后发送结束帧
-    radio.write(sync_end_tx, data_sync_witdh);
-
-    // Now, continue listening
-    radio.startListening();
-
-    // Wait here until we get a response, or timeout
-    unsigned long started_waiting_at = millis();
-    bool timeout = false;
-    while ( ! radio.available() && ! timeout )
-      if (millis() - started_waiting_at > 500 )
-        timeout = true;
-
-    // Describe the results
-    if ( timeout )
-    {
-      Serial.println(F("Failed, response timed out."));
-    }
-    else
-    {
-      // Grab the response, compare, and send to debugging spew
-      uint8_t len = radio.getDynamicPayloadSize();
-      
-      // If a corrupt dynamic payload is received, it will be flushed
-      if(!len){
-        return; 
-      }
-      
-      radio.read( receive_payload, len );
-
-      // Put a zero at the end for easy printing
-      receive_payload[len] = 0;
-
-      // Spew it
-      Serial.print(F("Got response size="));
-      Serial.print(len);
-      Serial.print(F(" value="));
-      Serial.println(receive_payload);
-    }
-    
-    // Update size for next time.
-    next_payload_size += payload_size_increments_by;
-    if ( next_payload_size > max_payload_size )
-      next_payload_size = min_payload_size;
-}
-
 void shoot() {
   char data[32];
   char buf[32];
