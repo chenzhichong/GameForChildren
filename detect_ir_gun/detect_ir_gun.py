@@ -7,4 +7,4 @@ from receive_gun_cmd import receive_gun_cmd
 import Queue
 
 if __name__ == "__main__":
-    print("Main gogogo!!!)
+    print("Main gogogo!!!")

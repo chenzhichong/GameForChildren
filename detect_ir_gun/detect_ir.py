@@ -29,23 +29,23 @@ class detect_ir():
 
         # 将这帧转换为灰度图
         elapsed = (time.clock() - start)
-        print "Get pic Time used: {}".format(elapsed)
+        print("Get pic Time used: {}".format(elapsed))
         # 转为灰度图
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # 阈值操作
         ret_thresh, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
         elapsed = (time.clock() - start)
-        print "Do threshold Time used: {}".format(elapsed)
+        print("Do threshold Time used: {}".format(elapsed))
         # 进行透视变换
         # pts1 = np.float32(L) #左上，右上，左下，右下
         pts1 = np.float32([[129,65],[579,90],[109,323],[599,334]])
         pts2 = np.float32([[0,0],[1366,0],[0,768],[1366,768]])
         M = cv2.getPerspectiveTransform(pts1,pts2)
         elapsed = (time.clock() - start)
-        print "Do getPerspectiveTransform Time used: {}".format(elapsed)
+        print("Do getPerspectiveTransform Time used: {}".format(elapsed))
         dst = cv2.warpPerspective(thresh,M,(1366,768))
         elapsed = (time.clock() - start)
-        print "Do warpPerspective Time used: {}".format(elapsed)
+        print("Do warpPerspective Time used: {}".format(elapsed))
         # 侵蚀操作，去掉噪点
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT,(2, 2))
         eroded = cv2.erode(dst,kernel)
@@ -67,7 +67,7 @@ class detect_ir():
         # if cv2.waitKey(1) == ord('q'):
             # break
         elapsed = (time.clock() - start)
-        print "Time used: {}".format(elapsed)
+        print("Time used: {}".format(elapsed))
         return None
 
     def mouse_callback(event, x, y, flags, param):
