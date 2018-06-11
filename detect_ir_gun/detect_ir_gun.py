@@ -8,3 +8,5 @@ import Queue
 
 if __name__ == "__main__":
     print("Main gogogo!!!")
+    rgc = receive_gun_cmd()
+    rgc.run()

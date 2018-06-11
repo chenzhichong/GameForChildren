@@ -13,7 +13,7 @@ import RPi.GPIO as GPIO
 
 # irq_gpio_pin = None
 class receive_gun_cmd(threading.Thread):
-    def __init__(self,interval):
+    def __init__(self):
         self.radio = RF24(22, 0);
         self.pipes = [0xF0F0F0F0E1, 0xF0F0F0F0D2]
         self.millis = lambda: int(round(time.time() * 1000))
@@ -25,16 +25,16 @@ class receive_gun_cmd(threading.Thread):
         self.radio.printDetails()
 
         print(' ************ Receive Setup *********** ')
-        self.radio.openWritingPipe(pipes[1])
-        self.radio.openReadingPipe(1,pipes[0])
+        self.radio.openWritingPipe(self.pipes[1])
+        self.radio.openReadingPipe(1, self.pipes[0])
         self.radio.startListening()
-        self.thread_is_running = False
+        self.thread_is_running = True
 
     def run(self):
         while self.thread_is_running:
-            if radio.available():
-                len = radio.getDynamicPayloadSize()
-                receive_payload = radio.read(len)
+            if self.radio.available():
+                len = self.radio.getDynamicPayloadSize()
+                receive_payload = self.radio.read(len)
                 # print(type(receive_payload))
                 # if ((receive_payload[0] == 0) and (receive_payload[1] == 255) and (receive_payload[2] == 255)):
                     # print("Got start code!")
