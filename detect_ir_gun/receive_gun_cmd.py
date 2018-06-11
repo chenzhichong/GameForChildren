@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function
-import thread
+import threading
 import time
 from RF24 import *
 import RPi.GPIO as GPIO
@@ -53,5 +53,5 @@ class receive_gun_cmd(threading.Thread):
                 # Now, resume listening so we catch the next packets.
                 self.radio.startListening()
 
-     def stop(self):
+    def stop(self):
         self.thread_is_running = False
