@@ -13,7 +13,8 @@ import RPi.GPIO as GPIO
 
 # irq_gpio_pin = None
 class receive_gun_cmd(threading.Thread):
-    def __init__(self):
+    def __init__(self, interval):
+        threading.Thread.__init__(self)
         self.radio = RF24(22, 0);
         self.pipes = [0xF0F0F0F0E1, 0xF0F0F0F0D2]
         self.millis = lambda: int(round(time.time() * 1000))
@@ -29,6 +30,7 @@ class receive_gun_cmd(threading.Thread):
         self.radio.openReadingPipe(1, self.pipes[0])
         self.radio.startListening()
         self.thread_is_running = True
+        self.interval = interval
 
     def run(self):
         while self.thread_is_running:
@@ -52,6 +54,7 @@ class receive_gun_cmd(threading.Thread):
 
                 # Now, resume listening so we catch the next packets.
                 self.radio.startListening()
+            time.sleep(self.interval)
 
     def stop(self):
         self.thread_is_running = False

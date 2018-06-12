@@ -6,26 +6,40 @@ import cv2
 import numpy as np
 import time
 import RPi.GPIO as GPIO
+import threading
+import socket
+import struct
 
 class detect_ir():
     def __init__(self):
-        self.capture = cv2.VideoCapture(0)
+        self.__capture = cv2.VideoCapture(0)
+        if (not self.__capture.isOpened()):
+            print("EEROR: Can not open cam!")
+            return
         # 注意VideoWriter的长宽是int型，需要强制转换一下
-        self.width = int(capture.get(3))
-        self.height = int(capture.get(4))
-        print("cam, width=[{}], height=[{}]".format(width, height))
+        self.__width = int(self.__capture.get(3))
+        self.__height = int(self.__capture.get(4))
+        print("cam, width=[{}], height=[{}]".format(self.__width, self.__height))
+        self.__send_pic = self.__send_pic(self.__capture)
+        self.__send_pic.start()
+        time.sleep(5)
+        self.__send_pic.stop();
         # ret, frame = capture.read()
         # cv2.imwrite('cam.png', frame)
         # time.sleep(2)
 
-    def __del__( self ):
+    def __del__(self):
         print("Bye!!")
-        self.capture.release()
+        if self.__capture.isOpened():
+            self.__capture.release()
 
-    def get_coordinate():
+    def get_coordinate(self):
+        if not self.__capture.isOpened():
+            print("Cam is not opened, or something happen to it.")
+            return None
         # 获取一帧
         start = time.clock()
-        ret, frame = self.capture.read()
+        ret, frame = self.__capture.read()
 
         # 将这帧转换为灰度图
         elapsed = (time.clock() - start)
@@ -70,7 +84,67 @@ class detect_ir():
         print("Time used: {}".format(elapsed))
         return None
 
-    def mouse_callback(event, x, y, flags, param):
+    ''' 内部类，用于发送从cam截取的图片到pc '''
+    class __send_pic():
+        def __init__(self, capture = None, remote_address = ("10.28.5.76", 7999), interval = 0.1):
+            print('Get pic,gogogo!!!')
+            self.__interval = interval
+            self.__capture = capture
+            self.__remote_address = remote_address
+            self.__active = False
+            self.__thread = threading.Thread(target = self.__run)
+
+        def start(self):
+            # 启动线程
+            self.__active = True
+            self.__thread.start()
+
+        def stop(self):
+            # 停止线程
+            self.__active = False
+            self.__thread.join()
+
+        def __run(self):
+            if not self.__capture.isOpened():
+                print("Cam is not opened, or something happen to it.")
+                return
+            try :
+                client_socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+                print("here,will block until connected...")
+                # client_socket.connect(('10.28.5.76', 7999))
+                client_socket.connect(self.__remote_address)
+                print("ok,already connected!!!")
+                connection = client_socket.makefile('wb')
+            except Exception as e:
+                print(e)
+                return
+            try :
+                while self.__active == True and self.__capture.isOpened():
+                    #读取图片
+                    ret, frame = self.__capture.read()
+                    #转换为jpg格式
+                    result, imgencode = cv2.imencode('.jpg', frame)
+                    img_code = np.array(imgencode)
+                    img_str = img_code.tostring()
+                    #获得图片长度
+                    s = struct.pack('<L', len(img_str))
+                    print(len(img_str))
+                    #将图片长度传输到服务端
+                    connection.write(s)
+                    connection.flush()
+                    # 传输图片流
+                    connection.write(img_str)
+                    connection.flush()
+                if not self.__active:
+                    connection.write(struct.pack('<L', 0))
+                    connection.flush()
+            except Exception as e:
+                print(e)
+            finally:
+                connection.close()
+                client_socket.close()
+
+    def mouse_callback(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
             # cv2.circle(frame, (x, y), 2, (0, 0, 255), -1)
             print("x={0}, y={1}".format(x, y))
