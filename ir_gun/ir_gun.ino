@@ -18,10 +18,16 @@ JsonObject& root = jsonBuffer.createObject();
 const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
 
 // CMD枚举
-typedef enum { cmd_shoot = 1, cmd_respone } cmd_e;
+typedef enum { cmd_invalid = 0, cmd_shoot = 1, cmd_respone } cmd_e;
 
 // cmd
-cmd_e cmd = cmd_shoot;
+// cmd_e cmd = cmd_shoot;
+
+// 状态变量
+volatile int state_flag = 1;
+
+// 状态枚举
+typedef enum { state_normal = 1, state_adjust, state_powerdown } state_e;
 
 // 负载设置
 const int min_payload_size = 4;
@@ -67,7 +73,7 @@ void setup() {
   //root["ver"] = "0.1";
   root["ID"] = id_transmit;
   root["role"] = "Gun1";
-  root["cmd"] = int(cmd);
+  root["cmd"] = int(cmd_invalid);
   root.prettyPrintTo(Serial);
 
   // 初始化nRF24L01
@@ -94,14 +100,14 @@ void setup() {
   idle_start_at = millis();
 }
 
-void shoot() {
+int send_cmd(cmd_e cmd) {
+  // 定义32bytes用于发送
   char data[32];
-  char buf[32];
-  int index_data;
+  // char buf[32];
+  // int index_data;
   // 填充数据
   id_transmit++;
   root["ID"] = id_transmit;
-  cmd = cmd_shoot;
   root["cmd"] = int(cmd);
 
   // 先停止监听才能发送
@@ -109,8 +115,9 @@ void shoot() {
 
   // 发送数据，会一直阻塞直到发送完毕
   int size_root = root.measureLength();
-  Serial.print(F("Now sending length "));
+  Serial.print(F("Now sending length of cmd:"));
   Serial.println(size_root);
+  // 将json打印到串口
   root.printTo(Serial);
   Serial.println();
   // 先发送起始帧
@@ -118,7 +125,8 @@ void shoot() {
   // 发送总的长度
   //radio.write(size_root, 2);
   // 发送帧数，每帧31字节，头2字节是序号
-  // printTo这个函数需要多加一个字节存放null字符
+
+  // 将json打印为str用于传输，printTo这个函数需要多加一个字节存放null字符
   root.printTo(data, size_root + 1);
   radio.write(data, size_root);
   // 最后发送结束帧
@@ -137,13 +145,14 @@ void shoot() {
   // 输出结果
   if (timeout) {
     Serial.println(F("Failed, response timed out."));
+    return cmd_invalid;
   } else {
     // 收到反馈
     uint8_t len = radio.getDynamicPayloadSize();
 
     // 如果接收到错误的包，芯片会清除
     if(!len) {
-      return;
+      return cmd_invalid;
     }
 
     radio.read(receive_payload, len);
@@ -156,6 +165,12 @@ void shoot() {
     Serial.print(len);
     Serial.print(F(" value="));
     Serial.println(receive_payload);
+    JsonObject& root_receive = jsonBuffer.parseObject(receive_payload);
+    if (!root_receive.success()) {
+        Serial.println("ERROR:parseObject() failed");
+        return cmd_invalid;
+    }
+    return root_receive["cmd"];
   }
 }
 
@@ -182,7 +197,7 @@ void loop() {
       Serial.println(F("Button Pressed!"));
       digitalWrite(ir_pin, HIGH);
       radio.powerUp();
-      shoot();
+      send_cmd(cmd_shoot);
       delay(delay_time);
     }
     delay(50);
