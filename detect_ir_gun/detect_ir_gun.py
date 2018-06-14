@@ -11,9 +11,10 @@ if __name__ == "__main__":
     print("Main gogogo!!!")
     rgc = receive_gun_cmd(0.1)
     rgc.start()
-    di = detect_ir()
+    # di = detect_ir()
     # di.get_coordinate()
     # di.start_get_pic()
-    time.sleep(5)
+    # time.sleep(100)
+    str = raw_input("Enter any key, will end: ");
     rgc.stop()
     # di.stop_get_pic()

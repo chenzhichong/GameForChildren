@@ -180,6 +180,7 @@ int send_cmd(cmd_e cmd) {
     Serial.println(json_buffer_receive.size());
     if (!root_receive.success()) {
         Serial.println("ERROR:parseObject() failed");
+        json_buffer_receive.clear();
         return cmd_invalid;
     }
     int ret = root_receive["cmd"];

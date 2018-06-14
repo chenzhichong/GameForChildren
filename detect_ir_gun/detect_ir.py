@@ -22,14 +22,13 @@ class detect_ir():
         print("cam, width=[{}], height=[{}]".format(self.__width, self.__height))
         self.__send_pic = self.__send_pic(self.__capture)
         self.__send_pic.start()
-        time.sleep(5)
-        self.__send_pic.stop();
         # ret, frame = capture.read()
         # cv2.imwrite('cam.png', frame)
         # time.sleep(2)
 
     def __del__(self):
         print("Bye!!")
+        self.__send_pic.stop();
         if self.__capture.isOpened():
             self.__capture.release()
 
