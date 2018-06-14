@@ -11,23 +11,24 @@ RF24 radio(7,8);
 Energy energy;
 
 // 创建ArduinoJson实例
-StaticJsonBuffer<200> jsonBuffer;
-JsonObject& root = jsonBuffer.createObject();
+StaticJsonBuffer<100> json_buffer_send;
+JsonObject& root_send = json_buffer_send.createObject();
+StaticJsonBuffer<100> json_buffer_receive;
 
 // 读写通道地址
 const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
 
 // CMD枚举
-typedef enum { cmd_invalid = 0, cmd_shoot = 1, cmd_respone } cmd_e;
+typedef enum { cmd_invalid = 0, cmd_shoot = 1, cmd_confirm, cmd_adjust, cmd_end, cmd_respone } cmd_e;
 
 // cmd
 // cmd_e cmd = cmd_shoot;
 
-// 状态变量
-volatile int state_flag = 1;
-
 // 状态枚举
-typedef enum { state_normal = 1, state_adjust, state_powerdown } state_e;
+typedef enum { state_invalid = 0, state_normal = 1, state_adjust, state_powerdown } state_e;
+
+// 状态变量
+volatile state_e state_flag = state_invalid;
 
 // 负载设置
 const int min_payload_size = 4;
@@ -37,12 +38,20 @@ int next_payload_size = min_payload_size;
 char receive_payload[max_payload_size+1]; // +1 to allow room for a terminating NULL char
 
 // 管脚定义
-const int button_pin = 2;
+const int button_trigger_pin = 2;
 const int ir_pin = 3;
+const int button_func_pin = 4;
+
+// 按键状态
+int button_trigger_state = 1;
+int last_button_trigger_state = 1;
+int button_func_state = 1;
+int last_button_func_state = 1;
+unsigned long button_func_duration;
 
 // 声明变量
 const int delay_time = 200;
-const unsigned long idle_wait_time = 5000;
+const unsigned long idle_wait_time = 50000;
 const unsigned long response_waiting_time = 500;
 unsigned long idle_start_at = 0;
 unsigned long id_transmit = 0;
@@ -52,14 +61,11 @@ const int data_sync_witdh = 3;
 const unsigned char sync_start_tx[data_sync_witdh]={0,255,255};//开始帧
 const unsigned char sync_end_tx[data_sync_witdh]={255,255,0};//结束帧
 
-// 按键状态
-int button_state = 0;
-int last_button_state = 0;
-
 void setup() {
   Serial.begin(115200);
   Serial.println(F("gun go!go!go!"));
-  pinMode(button_pin, INPUT_PULLUP);
+  pinMode(button_trigger_pin, INPUT_PULLUP);
+  pinMode(button_func_pin, INPUT_PULLUP);
   pinMode(ir_pin, OUTPUT);
   id_transmit = 0;
 
@@ -71,10 +77,11 @@ void setup() {
   //   "cmd":0,
   // }
   //root["ver"] = "0.1";
-  root["ID"] = id_transmit;
-  root["role"] = "Gun1";
-  root["cmd"] = int(cmd_invalid);
-  root.prettyPrintTo(Serial);
+  root_send["ID"] = id_transmit;
+  root_send["gun"] = "p";
+  root_send["cmd"] = int(cmd_invalid);
+  root_send.prettyPrintTo(Serial);
+  Serial.println(json_buffer_send.size());
 
   // 初始化nRF24L01
   radio.begin();
@@ -96,6 +103,9 @@ void setup() {
   radio.printDetails();
   Serial.println();
 
+  // 初始状态为normal
+  state_flag = state_normal;
+
   // 配置结束，开始记录空闲
   idle_start_at = millis();
 }
@@ -107,18 +117,18 @@ int send_cmd(cmd_e cmd) {
   // int index_data;
   // 填充数据
   id_transmit++;
-  root["ID"] = id_transmit;
-  root["cmd"] = int(cmd);
+  root_send["ID"] = id_transmit;
+  root_send["cmd"] = int(cmd);
 
   // 先停止监听才能发送
   radio.stopListening();
 
   // 发送数据，会一直阻塞直到发送完毕
-  int size_root = root.measureLength();
+  int size_root = root_send.measureLength();
   Serial.print(F("Now sending length of cmd:"));
   Serial.println(size_root);
   // 将json打印到串口
-  root.printTo(Serial);
+  root_send.printTo(Serial);
   Serial.println();
   // 先发送起始帧
   //radio.write(sync_start_tx, data_sync_witdh);
@@ -127,7 +137,7 @@ int send_cmd(cmd_e cmd) {
   // 发送帧数，每帧31字节，头2字节是序号
 
   // 将json打印为str用于传输，printTo这个函数需要多加一个字节存放null字符
-  root.printTo(data, size_root + 1);
+  root_send.printTo(data, size_root + 1);
   radio.write(data, size_root);
   // 最后发送结束帧
   //radio.write(sync_end_tx, data_sync_witdh);
@@ -165,12 +175,16 @@ int send_cmd(cmd_e cmd) {
     Serial.print(len);
     Serial.print(F(" value="));
     Serial.println(receive_payload);
-    JsonObject& root_receive = jsonBuffer.parseObject(receive_payload);
+    JsonObject& root_receive = json_buffer_receive.parseObject(receive_payload);
+    Serial.print(F("json_buffer_receive size:"));
+    Serial.println(json_buffer_receive.size());
     if (!root_receive.success()) {
         Serial.println("ERROR:parseObject() failed");
         return cmd_invalid;
     }
-    return root_receive["cmd"];
+    int ret = root_receive["cmd"];
+    json_buffer_receive.clear();
+    return ret;
   }
 }
 
@@ -179,35 +193,74 @@ void wakeISR() {
     // 待机时的中断响应
     Serial.println(F("Now, we need to wake up!"));
     detachInterrupt(digitalPinToInterrupt(2));
+    state_flag = state_normal;
   } else {
     // 非待机时的中断响应
   }
 }
 
 void loop() {
-  button_state = digitalRead(button_pin);
-  if (button_state != last_button_state) {
-    if (button_state == HIGH) {
+  // 扳机检测
+  button_trigger_state = digitalRead(button_trigger_pin);
+  if (button_trigger_state != last_button_trigger_state) {
+    if (button_trigger_state == HIGH) {
       // 按键没按
-      Serial.println(F("Button not Pressed!"));
+      Serial.println(F("Trigger not Pressed!"));
       digitalWrite(ir_pin, LOW);
       radio.powerDown();
     } else {
       // 按键按下
-      Serial.println(F("Button Pressed!"));
+      Serial.println(F("Trigger Pressed!"));
       digitalWrite(ir_pin, HIGH);
       radio.powerUp();
-      send_cmd(cmd_shoot);
+      int tmp_cmd;
+      switch (state_flag) {
+        case state_normal:
+          send_cmd(cmd_shoot);
+          break;
+        case state_adjust:
+          tmp_cmd = send_cmd(cmd_confirm);
+          if (tmP_cmd == cmd_end)
+            state_flag == state_normal;
+          break;
+        case state_powerdown:
+          break;
+      }
       delay(delay_time);
     }
     delay(50);
     idle_start_at = millis();
   }
-    last_button_state = button_state;
+  last_button_trigger_state = button_trigger_state;
+
+  // 功能键长按检测
+  button_func_state = digitalRead(button_func_pin);
+  // if (button_func_state != last_button_func_state) {
+  if (button_func_state == LOW) {
+    // 按键按下
+    delay(100);
+    button_func_state = digitalRead(button_func_pin);
+    if ((button_func_state == LOW) && (state_flag != state_adjust)) {
+      Serial.println(F("FB Pressed!"));
+      button_func_duration = millis();
+      while (button_func_state == LOW) {
+        if (millis() - button_func_duration >= 3*1000) {
+          Serial.println(F("Detect function button Pressed!!"));
+          Serial.println(F("Entry adjust mode!!"));
+          state_flag = state_adjust;
+          break;
+        }
+        delay(100);
+      }
+    }
+    delay(50);
+  }
+
   if (millis() - idle_start_at > idle_wait_time ) {
     Serial.println(F("Idle too long, need to power down!"));
     // 设置中断
     attachInterrupt(digitalPinToInterrupt(2), wakeISR, CHANGE);
+    state_flag = state_powerdown;
     energy.PowerDown();
   }
 }
