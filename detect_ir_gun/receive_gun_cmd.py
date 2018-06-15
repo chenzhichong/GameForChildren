@@ -6,18 +6,10 @@ import threading
 import time
 from RF24 import *
 import RPi.GPIO as GPIO
-from enum import Enum
+from cmd_enum import cmd_enum
 import json
-from collections import OrderedDict
-
-class cmd_enum(Enum):
-    cmd_invalid = 0
-    cmd_shoot = 1
-    cmd_confirm = 2
-    cmd_adjust = 3
-    cmd_end = 4
-    cmd_respone = 5
-
+from event_type import *
+from event_engine import event
 
 # Setup for connected IRQ pin, GPIO 24 on RPi B+; uncomment to activate
 # irq_gpio_pin = RPI_BPLUS_GPIO_J8_18
@@ -25,7 +17,7 @@ class cmd_enum(Enum):
 
 # irq_gpio_pin = None
 class receive_gun_cmd(threading.Thread):
-    def __init__(self, interval):
+    def __init__(self, interval, event_engine):
         threading.Thread.__init__(self)
         self.radio = RF24(22, 0);
         self.pipes = [0xF0F0F0F0E1, 0xF0F0F0F0D2]
@@ -43,6 +35,7 @@ class receive_gun_cmd(threading.Thread):
         self.radio.startListening()
         self.thread_is_running = True
         self.interval = interval
+        self._event_engine = event_engine
         self.gun_cmd_ID = 0
         self._value_lock = threading.Lock()
 
@@ -53,7 +46,7 @@ class receive_gun_cmd(threading.Thread):
             self.radio.stopListening()
 
             # Send the final one back.
-            response_payload = json.dumps(gun_cmd).encode('utf-8')
+            response_payload = json.dumps(gun_cmd, separators=(',',':')).encode('utf-8')
             self.radio.write(response_payload)
             print('Sent response: {}'.format(response_payload))
 
@@ -63,7 +56,6 @@ class receive_gun_cmd(threading.Thread):
     def wrap_gun_cmd(self, gun_name, cmd):
         tmp_gun_cmd = {"cmd": cmd, "ID": self.gun_cmd_ID, "gun": gun_name}
         return tmp_gun_cmd
-
 
     def run(self):
         while self.thread_is_running:
@@ -84,7 +76,18 @@ class receive_gun_cmd(threading.Thread):
                 # print('Got payload size={} value="{}"'.format(len, receive_payload.decode('utf-8')))
                 # receive_data["cmd"] = cmd_enum.cmd_respone.value
                 # self.send_cmd(receive_data)
-                self.send_cmd(self.wrap_gun_cmd("p", cmd_enum.cmd_respone.value))
+                # 发送射击事件
+                if cmd_x == cmd_enum.cmd_shoot.value:
+                    evt = event(EVENT_SHOOT)
+                    evt.dict["instance"] = self
+                elif cmd_x == cmd_enum.cmd_confirm.value:
+                    evt = event(EVENT_CONFIRM)
+                    evt.dict["instance"] = self
+                elif cmd_x == cmd_enum.cmd_adjust.value:
+                    evt = event(EVENT_ADJUST)
+                    evt.dict["instance"] = self
+                self._event_engine.sent_event(evt)
+                # self.send_cmd(self.wrap_gun_cmd("p", cmd_enum.cmd_respone.value))
             time.sleep(self.interval)
 
     def stop(self):
