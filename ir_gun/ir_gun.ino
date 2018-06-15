@@ -194,6 +194,7 @@ void wakeISR() {
     // 待机时的中断响应
     Serial.println(F("Now, we need to wake up!"));
     detachInterrupt(digitalPinToInterrupt(2));
+    radio.powerUp();
     state_flag = state_normal;
   } else {
     // 非待机时的中断响应
@@ -208,20 +209,24 @@ void loop() {
       // 按键没按
       Serial.println(F("Trigger not Pressed!"));
       digitalWrite(ir_pin, LOW);
-      radio.powerDown();
     } else {
       // 按键按下
       Serial.println(F("Trigger Pressed!"));
-      digitalWrite(ir_pin, HIGH);
-      radio.powerUp();
       int tmp_cmd;
       switch (state_flag) {
         case state_normal:
-          send_cmd(cmd_shoot);
+          tmp_cmd = send_cmd(cmd_shoot);
+          // 如果有反馈，需要延时100ms
+          if (tmp_cmd == cmd_respone) {
+            digitalWrite(ir_pin, HIGH);
+            delay(100);
+            digitalWrite(ir_pin, LOW);
+          }
           break;
         case state_adjust:
           tmp_cmd = send_cmd(cmd_confirm);
-          if (tmP_cmd == cmd_end)
+          // 接收到end指令，就返回正常模式
+          if (tmp_cmd == cmd_end)
             state_flag == state_normal;
           break;
         case state_powerdown:
@@ -236,7 +241,6 @@ void loop() {
 
   // 功能键长按检测
   button_func_state = digitalRead(button_func_pin);
-  // if (button_func_state != last_button_func_state) {
   if (button_func_state == LOW) {
     // 按键按下
     delay(100);
@@ -262,6 +266,7 @@ void loop() {
     // 设置中断
     attachInterrupt(digitalPinToInterrupt(2), wakeISR, CHANGE);
     state_flag = state_powerdown;
+    radio.powerDown();
     energy.PowerDown();
   }
 }
