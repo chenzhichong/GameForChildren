@@ -251,8 +251,11 @@ void loop() {
       while (button_func_state == LOW) {
         if (millis() - button_func_duration >= 3*1000) {
           Serial.println(F("Detect function button Pressed!!"));
-          Serial.println(F("Entry adjust mode!!"));
-          state_flag = state_adjust;
+          int tmp_cmd = send_cmd(cmd_adjust);
+          if (tmp_cmd == cmd_respone) {
+            state_flag = state_adjust;
+            Serial.println(F("Entry adjust mode!!"));
+          }
           break;
         }
         delay(100);
