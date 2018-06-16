@@ -227,7 +227,7 @@ void loop() {
           tmp_cmd = send_cmd(cmd_confirm);
           // 接收到end指令，就返回正常模式
           if (tmp_cmd == cmd_end)
-            state_flag == state_normal;
+            state_flag = state_normal;
           break;
         case state_powerdown:
           break;
@@ -259,9 +259,11 @@ void loop() {
           break;
         }
         delay(100);
+        button_func_state = digitalRead(button_func_pin);
       }
     }
     delay(50);
+    idle_start_at = millis();
   }
 
   if (millis() - idle_start_at > idle_wait_time ) {
