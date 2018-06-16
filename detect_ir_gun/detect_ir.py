@@ -20,19 +20,26 @@ class detect_ir():
         self.__width = int(self.__capture.get(3))
         self.__height = int(self.__capture.get(4))
         print("cam, width=[{}], height=[{}]".format(self.__width, self.__height))
-        self.__send_pic = self.__send_pic(self.__capture)
-        self.__send_pic.start()
+        self.__send_pic_inst = None
+        # self.__send_pic = self.__send_pic(self.__capture)
+        # self.__send_pic.start()
         # ret, frame = capture.read()
         # cv2.imwrite('cam.png', frame)
         # time.sleep(2)
 
     def __del__(self):
         print("Bye!!")
-        self.__send_pic.stop();
         if self.__capture.isOpened():
             self.__capture.release()
 
-    def get_coordinate(self):
+    def start_send_pic(self):
+        self.__send_pic_inst = self.__send_pic(self.__capture)
+        self.__send_pic_inst.start()
+
+    def stop_send_pic(self):
+        self.__send_pic_inst.stop()
+
+    def get_coordinate(self, need_pt = True, pt_points = None):
         if not self.__capture.isOpened():
             print("Cam is not opened, or something happen to it.")
             return None
@@ -47,21 +54,24 @@ class detect_ir():
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # 阈值操作
         ret_thresh, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+        cv2.imwrite("thresh.png", thresh)
         elapsed = (time.clock() - start)
         print("Do threshold Time used: {}".format(elapsed))
-        # 进行透视变换
-        # pts1 = np.float32(L) #左上，右上，左下，右下
-        pts1 = np.float32([[129,65],[579,90],[109,323],[599,334]])
-        pts2 = np.float32([[0,0],[1366,0],[0,768],[1366,768]])
-        M = cv2.getPerspectiveTransform(pts1,pts2)
-        elapsed = (time.clock() - start)
-        print("Do getPerspectiveTransform Time used: {}".format(elapsed))
-        dst = cv2.warpPerspective(thresh,M,(1366,768))
-        elapsed = (time.clock() - start)
-        print("Do warpPerspective Time used: {}".format(elapsed))
+        if need_pt:
+            # 进行透视变换
+            print(pt_points)
+            pts1 = np.float32(pt_points) #左上，右上，左下，右下
+            # pts1 = np.float32([[129,65],[579,90],[109,323],[599,334]])
+            pts2 = np.float32([[0,0],[1366,0],[0,768],[1366,768]])
+            M = cv2.getPerspectiveTransform(pts1,pts2)
+            elapsed = (time.clock() - start)
+            print("Do getPerspectiveTransform Time used: {}".format(elapsed))
+            thresh = cv2.warpPerspective(thresh,M,(1366,768))
+            elapsed = (time.clock() - start)
+            print("Do warpPerspective Time used: {}".format(elapsed))
         # 侵蚀操作，去掉噪点
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT,(2, 2))
-        eroded = cv2.erode(dst,kernel)
+        eroded = cv2.erode(thresh,kernel)
         # 膨胀操作，还原目标点
         dilated = cv2.dilate(eroded,kernel)
         cv2.imwrite("dilated.png", dilated)
@@ -85,7 +95,7 @@ class detect_ir():
 
     ''' 内部类，用于发送从cam截取的图片到pc '''
     class __send_pic():
-        def __init__(self, capture = None, remote_address = ("10.28.5.76", 7999), interval = 0.1):
+        def __init__(self, capture = None, remote_address = ("192.168.31.222", 7999), interval = 0.1):
             print('Get pic,gogogo!!!')
             self.__interval = interval
             self.__capture = capture
@@ -116,6 +126,7 @@ class detect_ir():
                 connection = client_socket.makefile('wb')
             except Exception as e:
                 print(e)
+                client_socket.close()
                 return
             try :
                 while self.__active == True and self.__capture.isOpened():
@@ -134,6 +145,7 @@ class detect_ir():
                     # 传输图片流
                     connection.write(img_str)
                     connection.flush()
+                # 停止线程的时候发送0过去，结束显示图片
                 if not self.__active:
                     connection.write(struct.pack('<L', 0))
                     connection.flush()
